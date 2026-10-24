@@ -20,5 +20,6 @@ export interface PptPluginContext {
 }
 export declare function apply(ctx: PptPluginContext, config?: Config): void;
 export { resolvePptConfig, PPT_OUTPUT_DIR_ENV, DEFAULT_MAX_SLIDES, clampInt } from './config.js';
+export { setTemplateDir, templatesDir, listTemplates, readTemplate, saveTemplate, updateTemplate, removeTemplate, ensureTemplateProvider, extractFromPptxFile, TEMPLATE_ID_PATTERN, BUILTIN_THEME_IDS, } from './templates.js';
 export { bundledSkillsDir, parseSkillFile, registerPptSkill, SKILL_NAMES } from './skill.js';
 export type { PptConfig, PptCreateArgs, PptCreateResult, PptLanguage, PptSlideLayout, PptSlideSpec, PptThemeId, PptThemeInfo, PptThemesResult, PptTemplateId, PptImageSpec, PptChartSpec, PptBrand, PptQualityIssue, PptQualityResult, PptVerification, PptRenderArgs, PptRenderResult, PptCheckResult, PptEditArgs, PptProjectArgs, PptDataModel, PptDataSource, PptDataMetric, } from './types.js';

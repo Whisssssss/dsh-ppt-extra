@@ -35,6 +35,7 @@ allowed-tools: "Bash, Read, Write, Edit"
    → 写大纲与正文前先读 `references/copywriting.md`。
 3. **Theme 主题**：调 `ppt_themes`（DSH）或 `node scripts/build-deck.mjs --list-themes`（跨 harness）。
    → 拿不准选哪套时读 `references/themes.md` 的情绪决策树。
+   → 用户已有自己的模板（校徽/班徽/固定配色）时优先用导入模板：先 `ppt_template_list` 看有哪些，再用 `ppt_create` 的 `designTemplate`；没有就 `ppt_template_import` 从现成 .pptx 抽取。规则见 `references/advanced.md`。
 4. **Build 生成**：
    - DSH 内：调 `ppt_create`，大纲写成 Markdown 传 `content`（推荐），或传结构化 `slides`。
    - 跨 harness：`node <skill-dir>/scripts/build-deck.mjs --title "标题" --content deck.md --theme data --lang zh --out dist`。
@@ -51,6 +52,7 @@ allowed-tools: "Bash, Read, Write, Edit"
 | 选主题拿不准 | `references/themes.md` | 5 套主题色板 + 情绪决策树 |
 | 用表格/金句/备注/结构化 slides | `references/syntax.md` | Markdown 解析、进阶语法、slides JSON、motion 开关 |
 | 图片/图表/模板/品牌/编辑/渲染 | `references/advanced.md` | 参数、限制、草稿与成品、收据语义 |
+| 导入用户自己的模板 | `references/advanced.md` | 从 .pptx 抽取、拖拽摆位、designTemplate |
 | 数字溯源与现场推演 | `references/data.md` | 来源绑定、公式、更新预览与离线参数回存 |
 | 交付异常 | `references/troubleshooting.md` | 症状 → 处理对照表 |
 
@@ -65,6 +67,7 @@ allowed-tools: "Bash, Read, Write, Edit"
 - [ ] 文件已写到用户工作区，路径为绝对路径。
 - [ ] 没有未填模板；保留真实数据来源，检查每页画面而非只检查生成成功。
 - [ ] 图片嵌入成功，图表与原始数据一致；渲染收据匹配最终 PPTX，说明尚未验证的部分。
+- [ ] 用导入模板时确认标志在四类页型都对：封面/章节/内容/结尾各看一页，浅底模板不要配深色底标志。
 
 ## 跨 harness 安装
 

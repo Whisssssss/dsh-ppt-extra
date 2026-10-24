@@ -20,6 +20,26 @@ Agent 先准备实际内容，再生成可放映 HTML 与可编辑 PPTX。用户
 
 编辑会原子更新整套HTML/PPTX/JSON，失败回滚。历史最多20次。`ppt_undo {deckPath:"report.json",expectedRevision:1}` 恢复上次状态，包含页面结构、图片/图表/品牌；revision继续增长，旧修改不可覆盖撤销。仅编辑本插件JSON工程，不导入任意外部PPTX进行修改。表格扩大到需要分页时会要求另建文稿。
 
+## 导入模板
+
+用户有自己的答辩/汇报模板（校徽、班徽、固定配色）时，先导入一次，之后生成都能套用。
+
+`ppt_template_import { file:"旧答辩.pptx", dryRun:true }` 只返回草稿不落盘：`draft` 是模板定义，`draftAssets` 是抠过白的标志图（dataURI），`candidates` 是抽取到的候选标志（含出现页与坐标）。确认后去掉 `dryRun` 保存，或改 `id`/`name` 再存。
+
+抽取内容：theme1.xml 配色与字体 + 全量统计的真实用色/字号；跨 3 页以上、位置一致的图片与底部文本判定为固定标志；按封面/章节/内容/结尾归类坐标。顶部导航条文字（研究背景 / 设计工作…）刻意不抽，避免把旧目录烤进模板。抠白从四边泛洪，保留标志内部高光；相对底色看不见的空图（如极淡水印）丢弃。
+
+坐标单位**英寸**，画布 13.3333×7.5；cm 值先 ÷2.54。每类页型最多 12 项。
+
+`ppt_template_list` 列出已导入模板；带 `id` 返回完整定义与素材 dataURI。
+`ppt_template_update { id, chrome, palette, fonts, typeScale, name }` 只改传入字段；能改位置/配色/字体/字号/名称。
+`ppt_template_remove { id, confirmed:true }` 删除，不可撤销。
+
+生成：`ppt_create { designTemplate:"<id>", ... }`，与 `theme` 同时给出时 `designTemplate` 优先（返回 `themeIgnored:true`）。HTML 与 PPTX 用同一份模板，16:9 画布内位置一致；模板固定在用户目录 `<DSH_HOME>/dsh-ppt/templates`，config `templatesDir` 可改。
+
+设置页「演示文稿 → 模板」可拖拽摆位（选择、移动、右下角缩放、方向键微调），也能表单式手动创建：传标志图 + 选 6 个配色。
+
+注意：只继承视觉令牌与固定标志层，不继承母版占位符与装饰形状；深色底模板需要反白版标志，自动反色会破坏渐变细节。
+
 ## 检查与渲染
 
 `ppt_check` 定位页面问题，包括密度、估计溢出、7–8列表格14pt、图片缺失/损坏/分辨率、图表标签和对比度。6列以内原生表格17pt。静态估算不能保证字体或视觉布局。

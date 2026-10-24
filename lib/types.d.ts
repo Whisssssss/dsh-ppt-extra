@@ -161,6 +161,68 @@ export interface PptConfig {
     defaultTheme?: string;
     /** 默认播放器界面语言，调用 ppt_create 时可用 lang 覆盖。 */
     defaultLang?: string;
+    /** 用户模板库目录；留空用 <DSH_HOME>/dsh-ppt/templates。 */
+    templatesDir?: string;
+}
+export interface PptChromeItem {
+    kind: 'image' | 'text';
+    /** kind=image 时引用模板 assets 的槽位名。 */
+    asset?: string;
+    /** kind=text 时的文字内容。 */
+    text?: string;
+    /** [x, y, w, h]，单位英寸，画布 13.3333 × 7.5。 */
+    box: [number, number, number, number];
+    size?: number;
+    color?: string;
+    font?: 'heading' | 'body' | 'accent';
+    align?: 'left' | 'center' | 'right';
+}
+export type PptChromePageType = 'cover' | 'section' | 'content' | 'closing';
+export interface PptTemplateAsset {
+    file: string;
+    width?: number;
+    height?: number;
+    alpha?: boolean;
+}
+export interface PptTemplateDocument {
+    schema: string;
+    id: string;
+    name: {
+        zh: string;
+        en?: string;
+    };
+    createdAt?: string;
+    source?: {
+        kind?: 'pptx' | 'form';
+        file?: string;
+        sha256?: string;
+    };
+    canvas?: {
+        w: number;
+        h: number;
+    };
+    dark?: boolean;
+    palette: Record<string, string>;
+    fonts?: Record<string, string>;
+    typeScale?: Record<string, number>;
+    assets?: Record<string, PptTemplateAsset>;
+    chrome: Record<PptChromePageType, PptChromeItem[]>;
+}
+export interface PptTemplateSummary {
+    id: string;
+    name: string;
+    dark: boolean;
+    palette: Record<string, string>;
+}
+export interface PptTemplateDetail extends PptTemplateSummary {
+    template: Record<string, any>;
+    assets: Record<string, string>;
+}
+export interface PptTemplateImportArgs {
+    file: string;
+    id?: string;
+    name?: string;
+    dryRun?: boolean;
 }
 export interface PptCreateArgs {
     title: string;
@@ -177,6 +239,8 @@ export interface PptCreateArgs {
     /** 是否覆盖同名三件套；默认 false，同名时自动选择唯一后缀。 */
     overwrite?: boolean;
     template?: PptTemplateId;
+    /** 导入的视觉模板 id；给出时优先于 theme。 */
+    designTemplate?: string;
     brand?: PptBrand;
     /** Optional explicit source facts, assumptions and safe arithmetic; bind slides with {{metricId}}. */
     dataModel?: PptDataModel;
@@ -211,6 +275,7 @@ export interface PptCreateResult {
     ok: boolean;
     title: string;
     theme: string;
+    designTemplate?: string;
     language: string;
     slideCount: number;
     outputDir: string;
@@ -246,7 +311,12 @@ export interface DeckEngine {
     renderDeck(options: Record<string, unknown>): Promise<PptRenderResult>;
     buildDeck(options: Record<string, unknown>): PptCreateResult;
     buildThemePreview(options: Record<string, unknown>): PptThemePreviewResult;
-    listThemes(lang?: string): PptThemeInfo[];
+    listThemes(lang?: string, templates?: Array<{
+        id: string;
+        name: string;
+        dark: boolean;
+        palette: Record<string, string>;
+    }>): PptThemeInfo[];
     resolveTheme(input: unknown): Record<string, unknown>;
     resolveLanguage(input: unknown): Record<string, unknown>;
 }

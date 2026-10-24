@@ -32,6 +32,9 @@ export declare class PptWorkbench {
     private view;
     private revision;
     private patch;
+    /** Browser uploads carry template assets as data URIs; only real PNG/JPEG data is accepted. */
+    private templateAssets;
+    private extractTemplate;
     action(body: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
     fetchDownload(request: Request): Promise<Response>;
     fetch(request: Request): Promise<Response>;

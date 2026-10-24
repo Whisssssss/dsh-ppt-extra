@@ -6,8 +6,8 @@ test('空配置可用：outputDir 空、maxSlides 默认 60', () => {
   const old = process.env[PPT_OUTPUT_DIR_ENV]
   delete process.env[PPT_OUTPUT_DIR_ENV]
   try {
-    assert.deepEqual(resolvePptConfig({}), { outputDir: '', maxSlides: 60, defaultTheme: '', defaultLang: '' })
-    assert.deepEqual(resolvePptConfig(undefined), { outputDir: '', maxSlides: 60, defaultTheme: '', defaultLang: '' })
+    assert.deepEqual(resolvePptConfig({}), { outputDir: '', maxSlides: 60, defaultTheme: '', defaultLang: '', templatesDir: '' })
+    assert.deepEqual(resolvePptConfig(undefined), { outputDir: '', maxSlides: 60, defaultTheme: '', defaultLang: '', templatesDir: '' })
   } finally {
     if (old === undefined) delete process.env[PPT_OUTPUT_DIR_ENV]
     else process.env[PPT_OUTPUT_DIR_ENV] = old
@@ -29,7 +29,9 @@ test('outputDir 优先显式配置，其次环境变量', () => {
 })
 
 test('defaultTheme / defaultLang 解析与校验', () => {
-  assert.deepEqual(resolvePptConfig({ defaultTheme: ' bold ', defaultLang: ' en ' }), { outputDir: '', maxSlides: 60, defaultTheme: 'bold', defaultLang: 'en' })
+  assert.deepEqual(resolvePptConfig({ defaultTheme: ' bold ', defaultLang: ' en ' }), { outputDir: '', maxSlides: 60, defaultTheme: 'bold', defaultLang: 'en', templatesDir: '' })
+  assert.equal(resolvePptConfig({ templatesDir: ' D:\\tpls ' }).templatesDir, 'D:\\tpls')
+  assert.throws(() => resolvePptConfig({ templatesDir: 42 }), /templatesDir/)
   assert.throws(() => resolvePptConfig({ defaultTheme: 'neon' }), /defaultTheme/)
   assert.throws(() => resolvePptConfig({ defaultLang: 'jp' }), /defaultLang/)
 })

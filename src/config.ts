@@ -8,6 +8,8 @@ export interface ResolvedPptConfig {
   maxSlides: number
   defaultTheme: string
   defaultLang: string
+  /** 用户模板库目录；空串表示用 <DSH_HOME>/dsh-ppt/templates。 */
+  templatesDir: string
 }
 
 /** 解析并校验插件行配置。本插件无必填项，空配置永远可用。 */
@@ -24,6 +26,9 @@ export function resolvePptConfig(config: PptConfig | undefined | null): Resolved
   }
   if (raw.defaultLang !== undefined && typeof raw.defaultLang !== 'string') {
     throw new Error('defaultLang 必须是字符串。')
+  }
+  if (raw.templatesDir !== undefined && typeof raw.templatesDir !== 'string') {
+    throw new Error('templatesDir 必须是字符串。')
   }
   const outputDir = (typeof raw.outputDir === 'string' ? raw.outputDir : '').trim()
     || (process.env[PPT_OUTPUT_DIR_ENV] ?? '').trim()
@@ -47,6 +52,7 @@ export function resolvePptConfig(config: PptConfig | undefined | null): Resolved
     maxSlides,
     defaultTheme,
     defaultLang,
+    templatesDir: (typeof raw.templatesDir === 'string' ? raw.templatesDir : '').trim(),
   }
 }
 

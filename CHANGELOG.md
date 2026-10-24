@@ -4,6 +4,15 @@
 
 [历史英文记录](docs/CHANGELOG.en.md)
 
+## 0.17.0（2026-10-25）
+
+- 新增「导入模板」：上传现成 .pptx，自动抽取配色、字体、字号刻度，以及跨页重复出现的固定标志（校徽、班徽、班名、页脚校训），归类为封面 / 章节 / 内容 / 结尾四类页型。
+- 标志素材统一转成带透明通道的 PNG：白底从四边泛洪抠除，保留被深色包围的内部高光；相对底色不可见的空图（如极淡水印）自动丢弃。
+- 也可表单式手动创建：上传标志图 + 选 6 个配色。设置页「演示文稿 → 模板」可用拖拽调整每类页型上的位置与尺寸。
+- 模板保存在用户级目录（默认 <DSH_HOME>/dsh-ppt/templates），生成时用 ppt_create 的 designTemplate 指定；HTML 与 PPTX 使用同一份模板数据，16:9 画布内位置一致。
+- 新增工具 ppt_template_import / ppt_template_list / ppt_template_update / ppt_template_remove；ppt_themes 会同时列出导入模板。旧工程与既有 5 套内置主题行为不变。
+- 使用说明见[导入模板](docs/TEMPLATE-IMPORT.md)，实现契约见[模板导入契约](docs/TEMPLATE-IMPORT-SPEC.md)。
+
 ## 0.16.1（2026-10-24）
 
 - 适配 DSH 0.2.1-rc.3 的动态模型目录：视觉检查、AI 预审与模拟答辩按提供方和模型 ID 保留选择，刷新或重排目录不会悄悄更换模型。

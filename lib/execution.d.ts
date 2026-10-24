@@ -26,5 +26,39 @@ export declare function createPptExecutors(config: ResolvedPptConfig, loadEngine
     undo(rawArgs: unknown, exec?: PptExecution): Promise<import("./types.js").PptCreateResult>;
     check(rawArgs: unknown, exec?: PptExecution): Promise<import("./types.js").PptQualityResult | import("./types.js").PptCheckResult>;
     render(rawArgs: unknown, exec?: PptExecution): Promise<import("./types.js").PptRenderResult>;
-    data(rawArgs: unknown, exec?: PptExecution): Promise<import("./types.js").PptCreateResult | Record<string, any>>;
+    templateList(rawArgs: unknown, exec?: PptExecution): Promise<{
+        ok: boolean;
+        template: import("./templates.js").PptTemplateDetail;
+        templates?: undefined;
+    } | {
+        ok: boolean;
+        templates: import("./templates.js").PptTemplateSummary[];
+        template?: undefined;
+    }>;
+    templateImport(rawArgs: unknown, exec?: PptExecution): Promise<{
+        ok: boolean;
+        dryRun: boolean;
+        draft: any;
+        draftAssets: any;
+        candidates: any;
+        stats: any;
+        template?: undefined;
+    } | {
+        ok: boolean;
+        template: import("./templates.js").PptTemplateDetail;
+        candidates: any;
+        dryRun?: undefined;
+        draft?: undefined;
+        draftAssets?: undefined;
+        stats?: undefined;
+    }>;
+    templateUpdate(rawArgs: unknown, exec?: PptExecution): Promise<{
+        ok: boolean;
+        template: import("./templates.js").PptTemplateDetail;
+    }>;
+    templateRemove(rawArgs: unknown, exec?: PptExecution): Promise<{
+        ok: boolean;
+        removed: boolean;
+    }>;
+    data(rawArgs: unknown, exec?: PptExecution): Promise<Record<string, any> | import("./types.js").PptCreateResult>;
 };

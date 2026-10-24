@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, statSync, openSync, closeSync, rmSync } from '
 import { resolve, dirname, extname, basename } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { inflateSync } from 'node:zlib'
-import { buildPptx, renderHtml, normalizeBuildOptions, normalizeSlides, resolveTheme, resolveLanguage, resolveDeckFileName, commitDeckArtifacts, DECK_VERSION, pptxEastAsianFont } from './deck-core.mjs'
+import { buildPptx, renderHtml, normalizeBuildOptions, normalizeSlides, resolveTheme, resolveLanguage, resolveDeckFileName, commitDeckArtifacts, DECK_VERSION, pptxEastAsianFont, pptxFontName, clampInt, chromePageType, CHROME_SLOTS } from './deck-core.mjs'
 import { MEDIA_LAYOUTS, mediaBoxes, LOGO_BOX, FOOTER_BOX, chartColors, normalizeChart } from './deck-media.mjs'
 import { normalizeDataModel, prepareDataSlides, validateDataSnapshot, previewDataChange, dataNotes, dataReport } from './deck-data.mjs'
 import { normalizeVisual, applyVisualActions } from './deck-visual.mjs'
@@ -125,12 +125,32 @@ function normalizeBrand(input, assets, cwd) {
   }
   return brand
 }
+function designTemplateId(manifest) {
+  return typeof manifest?.designTemplate === 'string' ? manifest.designTemplate.trim() : ''
+}
+/** designTemplate 优先于 theme：两条路径都落在 resolveTheme（含模板 provider）。 */
+function resolveManifestTheme(manifest) {
+  const template = designTemplateId(manifest)
+  return template ? resolveTheme(template) : resolveTheme(manifest.theme)
+}
+function chromeItemsFor(theme, layout) {
+  const items = theme?.chrome?.[chromePageType(layout)]
+  return Array.isArray(items) ? items : []
+}
+function hasThemeChrome(theme) {
+  return CHROME_SLOTS.some(slot => Array.isArray(theme?.chrome?.[slot]) && theme.chrome[slot].length > 0)
+}
+/** 模板 box（英寸 [x,y,w,h] 或 {x,y,w,h}）→ PPTX 用的形状框。 */
+function chromeBox(box) {
+  const values = Array.isArray(box) ? box : [box?.x, box?.y, box?.w, box?.h]
+  return { x: Number(values[0]) || 0, y: Number(values[1]) || 0, w: Number(values[2]) || 0, h: Number(values[3]) || 0 }
+}
 function brandedTheme(manifest) {
-  const theme = clone(resolveTheme(manifest.theme)), brand = manifest.brand
+  const theme = clone(resolveManifestTheme(manifest)), brand = manifest.brand
   if (brand?.primaryColor) theme.palette.accent = brand.primaryColor
   if (brand?.backgroundColor) theme.palette.bg = brand.backgroundColor
   if (brand?.textColor) theme.palette.fg = brand.textColor
-  if (brand?.fontFamily) theme.fonts = { heading: brand.fontFamily, body: brand.fontFamily }
+  if (brand?.fontFamily) theme.fonts = { ...theme.fonts, heading: brand.fontFamily, body: brand.fontFamily }
   return theme
 }
 function embedSlides(slides, assets, cwd) {
@@ -154,7 +174,7 @@ function validateRawSlides(slides) {
   })
 }
 function snapshot(manifest) {
-  return clone(Object.fromEntries(['title', 'theme', 'language', 'motion', 'slides', 'brand', 'template', 'dataModel'].filter(k => manifest[k] !== undefined).map(k => [k, manifest[k]])))
+  return clone(Object.fromEntries(['title', 'theme', 'designTemplate', 'language', 'motion', 'slides', 'brand', 'template', 'dataModel'].filter(k => manifest[k] !== undefined).map(k => [k, manifest[k]])))
 }
 function collectAssets(manifest) {
   const ids = new Set()
@@ -237,7 +257,7 @@ export function checkManifest(manifest) {
 
 async function exportPptx(manifest, theme, language, signal) {
   const base = buildPptx({ ...manifest, slides: manifest.slides.map(s => ({ ...s, notes: dataNotes(manifest,s) })) }, theme, language)
-  if (!manifest.brand?.logoAssetId && !manifest.brand?.footer && !manifest.slides.some(s => s.image || s.chart)) return base
+  if (!manifest.brand?.logoAssetId && !manifest.brand?.footer && !manifest.slides.some(s => s.image || s.chart) && !hasThemeChrome(theme)) return base
   abort(signal)
   let lib
   try { lib = await import('@office-kit/pptx') } catch (error) { fail('图片、图表和品牌导出需要 @office-kit/pptx@0.21.0。插件请重新安装；独立技能请在技能目录运行 npm install --ignore-scripts。' + error.message) }
@@ -279,6 +299,33 @@ async function exportPptx(manifest, theme, language, signal) {
       const footer = lib.addSlideTextBox(slide, { ...emu(FOOTER_BOX), text: manifest.brand.footer, name: 'Brand footer' })
       lib.setShapeTextFormat(footer, { size: 10, font: pptxEastAsianFont(theme.fonts.body), color: theme.palette.muted })
     }
+    if (hasThemeChrome(theme)) {
+      chromeItemsFor(theme, source.layout).forEach((item, itemIndex) => {
+        const box = emu(chromeBox(item?.box)), name = 'Template chrome ' + (itemIndex + 1)
+        if (item?.kind === 'image') {
+          const data = theme.chromeAssets?.[item.asset]
+          if (typeof data !== 'string') return
+          const comma = data.indexOf(',')
+          const bytes = comma >= 0 ? Buffer.from(data.slice(comma + 1), 'base64') : Buffer.alloc(0)
+          if (bytes.length === 0) return
+          lib.addSlideImage(slide, bytes, { ...box, name, fit: 'contain' })
+          return
+        }
+        if (item?.kind !== 'text') return
+        const text = String(item.text ?? '')
+        if (text === '') return
+        const family = item.font === 'accent' ? theme.fonts?.accent ?? theme.fonts?.heading
+          : item.font === 'body' ? theme.fonts?.body : theme.fonts?.heading
+        const shape = lib.addSlideTextBox(slide, { ...box, text, name })
+        lib.setShapeTextFormat(shape, {
+          size: clampInt(item.size, 14, 8, 96),
+          font: pptxFontName(family),
+          fontEastAsian: pptxEastAsianFont(family),
+          color: /^#[0-9a-f]{6}$/i.test(String(item.color ?? '')) ? String(item.color).toUpperCase() : theme.palette.fg,
+        })
+        if (typeof lib.setShapeAlignment === 'function' && ['center', 'right'].includes(item.align)) lib.setShapeAlignment(shape, item.align)
+      })
+    }
   })
   const invalid = lib.validatePresentation(presentation).filter(i => i.severity === 'error')
   if (invalid.length) fail('PPTX 结构校验失败：' + invalid.map(i => i.message).join('；'))
@@ -293,7 +340,8 @@ function documentBytes(manifest) {
   return text
 }
 function result(manifest, paths) {
-  return { ok: true, title: manifest.title, theme: manifest.theme, language: manifest.language,
+  return { ok: true, title: manifest.title, theme: manifest.theme,
+    ...(manifest.designTemplate ? { designTemplate: manifest.designTemplate } : {}), language: manifest.language,
     slideCount: manifest.slides.length, deckId: manifest.deckId, revision: manifest.revision,
     slides: manifest.slides.map((s, i) => ({ slide: i + 1, id: s.id, title: s.title, layout: s.layout })),
     undoAvailable: manifest.history.length, deliveryStatus: manifest.quality?.issues.some(i => i.code === 'template-unfilled') ? 'draft' : 'ready-for-review',
@@ -330,7 +378,11 @@ function commit(paths, data) {
 }
 
 function validateSnapshot(value, assets) {
-  resolveTheme(value.theme); resolveLanguage(value.language)
+  if (value.designTemplate !== undefined && (typeof value.designTemplate !== 'string' || value.designTemplate.trim() === '')) {
+    fail('工程 designTemplate 必须为模板 id 字符串')
+  }
+  // designTemplate 优先：模板工程里 theme 可能是被忽略的内置主题，不能因此判定工程损坏。
+  resolveManifestTheme(value); resolveLanguage(value.language)
   validateRawSlides(value.slides)
   validateDataSnapshot(value, normalizeSlides)
   if (value.brand != null) {
@@ -361,7 +413,9 @@ export async function buildDeckAsync(options = {}) {
   validateRawSlides(options.slides)
   const scenario = options.template ? scenarios.find(s => s.id === options.template) : undefined
   if (options.template && !scenario) fail('未知 template，请使用 weekly / defense / project / pitch')
-  const input = { ...options, theme: options.theme || scenario?.theme,
+  // designTemplate 优先于 theme：给出模板时连 theme 的合法性都不再校验，避免被忽略的参数把生成挡下来。
+  const designTemplate = typeof options.designTemplate === 'string' ? options.designTemplate.trim() : ''
+  const input = { ...options, theme: designTemplate ? undefined : options.theme || scenario?.theme,
     ...(!options.content?.trim() && !options.slides?.length && scenario ? { slides: templateSlides(scenario, String(options.title ?? ''), options.lang) } : {}) }
   const cwd = resolve(options.cwd || '.')
   const dataModel = options.dataModel ? normalizeDataModel(options.dataModel, { cwd, allowFiles:true }) : undefined
@@ -373,7 +427,8 @@ export async function buildDeckAsync(options = {}) {
   const brand = normalizeBrand(options.brand, assets, cwd)
   const manifest = { version: DECK_VERSION, schemaVersion: 1, deckId: randomUUID(), revision: 0,
     title: normalized.title, theme: normalized.theme.id, language: normalized.language.id, motion: normalized.motion,
-    ...(scenario ? { template: scenario.id } : {}), ...(brand ? { brand } : {}), ...(dataModel ? {dataModel} : {}), assets, history: [],
+    ...(designTemplate ? { designTemplate } : {}), ...(scenario ? { template: scenario.id } : {}),
+    ...(brand ? { brand } : {}), ...(dataModel ? {dataModel} : {}), assets, history: [],
     slides: embedSlides(normalized.deck.slides, assets, cwd).map(s => ({ ...s, id: randomUUID() })) }
   const data = await generate(manifest, options.signal)
   mkdirSync(normalized.outputDir, { recursive: true })
@@ -381,7 +436,8 @@ export async function buildDeckAsync(options = {}) {
   const file = resolveDeckFileName(normalized.outputDir, normalized.fileName, normalized.overwrite)
   const paths = pathsFor(resolve(normalized.outputDir, file + '.json'))
   withLock(paths.json, () => { abort(options.signal); commit(paths, data) })
-  return result(manifest, paths)
+  const outcome = result(manifest, paths)
+  return options.themeIgnored === true ? { ...outcome, themeIgnored: true } : outcome
 }
 
 function readDocument(pathInput, cwd = '.') {
@@ -394,7 +450,7 @@ function readDocument(pathInput, cwd = '.') {
   if (!document || typeof document.title !== 'string' || !Array.isArray(document.slides) || !document.slides.length) fail('这不是有效的 dsh-ppt JSON 工程')
   if (document.schemaVersion !== undefined && document.schemaVersion !== 1) fail('未知工程 schemaVersion，请升级插件后再修改')
   if (document.slides.length > 120) fail('工程页数超过 120')
-  resolveTheme(document.theme); resolveLanguage(document.language)
+  resolveManifestTheme(document); resolveLanguage(document.language)
   document.deckId ||= randomUUID(); document.revision ??= 0
   if (!Number.isInteger(document.revision) || document.revision < 0) fail('工程 revision 无效')
   document.assets ??= {}; document.history ??= []
@@ -530,7 +586,7 @@ export async function undoDeck(options = {}) {
   expected(state.manifest, options.expectedRevision)
   if (!state.manifest.history.length) fail('该工程没有可撤销的修改')
   const next = clone(state.manifest), prior = next.history.pop()
-  for (const key of ['brand', 'template', 'dataModel']) delete next[key]
+  for (const key of ['brand', 'template', 'designTemplate', 'dataModel']) delete next[key]
   Object.assign(next, prior)
   return saveRevision(state, next, options.signal)
 }

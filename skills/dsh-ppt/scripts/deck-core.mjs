@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve as resolvePath, join as joinPath } from 'node:path'
 import { deflateRawSync } from 'node:zlib'
-import { MEDIA_LAYOUTS, MEDIA_CSS, normalizeMediaSlide, renderMediaHtml, mediaBoxes } from './deck-media.mjs'
+import { MEDIA_LAYOUTS, MEDIA_CSS, normalizeMediaSlide, renderMediaHtml, mediaBoxes, chromeBoxToPercent } from './deck-media.mjs'
 import { renderDelivery } from './deck-delivery.mjs'
 import { renderDataView } from './deck-data-view.mjs'
 import { normalizeVisual, visualHtmlStyle, visualShapeXml, VISUAL_CSS } from './deck-visual.mjs'
@@ -365,13 +365,36 @@ export function buildThemePreview(options = {}) {
 }
 
 
+/**
+ * 模板主题 provider。插件层（src/templates.ts）加载模板包后注入，把用户导入的
+ * 模板 id 解析成渲染用 theme 对象（含 chrome / chromeAssets / typeScale）。
+ * deck-core 不引入 fs：provider 自己负责读盘，未命中返回 undefined。
+ */
+let templateThemeProvider
+
+export function setTemplateThemeProvider(fn) {
+  templateThemeProvider = typeof fn === 'function' ? fn : undefined
+}
+
+function themeFromTemplateProvider(id) {
+  if (!templateThemeProvider) return undefined
+  try {
+    return templateThemeProvider(id)
+  } catch (error) {
+    // 模板 provider 的失败原因（模板损坏、素材缺失、读盘失败）比「未知主题」更能定位
+    // 问题，原样抛出不改写语义。
+    throw error
+  }
+}
+
 export function resolveTheme(input) {
   const id = String(input ?? DEFAULT_THEME).trim().toLowerCase()
   const theme = THEMES[id]
-  if (!theme) {
-    throw new Error('dsh-ppt：未知主题 "' + id + '"，可选：' + THEME_IDS.join(' / ') + '（默认 ' + DEFAULT_THEME + '）')
-  }
-  return theme
+  if (theme) return theme
+  const imported = themeFromTemplateProvider(id)
+  if (imported) return imported
+  const hint = templateThemeProvider ? '；模板 id 见 ppt_template_list' : ''
+  throw new Error('dsh-ppt：未知主题 "' + id + '"，可选：' + THEME_IDS.join(' / ') + '（默认 ' + DEFAULT_THEME + '）' + hint)
 }
 
 export function resolveLanguage(input) {
@@ -390,20 +413,45 @@ export function resolveMotion(input) {
   throw new Error('dsh-ppt：未知 motion 值 "' + String(input) + '"，可选：on / off（默认 on）')
 }
 
-export function listThemes(lang = 'zh') {
-  const pick = (pair) => (lang === 'en' ? pair.en : pair.zh)
-  return THEME_IDS.map((id) => {
+function themeText(pair, lang, fallback) {
+  if (typeof pair === 'string') return pair
+  if (pair && typeof pair === 'object') {
+    const value = lang === 'en' ? pair.en ?? pair.zh : pair.zh ?? pair.en
+    if (typeof value === 'string') return value
+  }
+  return fallback
+}
+
+/**
+ * 主题列表：内置 5 套，再把导入模板以同一结构追加（custom: true）。
+ * 模板摘要只带 id / name / dark / palette，缺省字段用占位文案补齐。
+ */
+export function listThemes(lang = 'zh', templates = []) {
+  const builtin = THEME_IDS.map((id) => {
     const theme = THEMES[id]
     return {
       id,
-      name: pick(theme.name),
-      mood: pick(theme.mood),
-      bestFor: pick(theme.bestFor),
+      name: themeText(theme.name, lang, id),
+      mood: themeText(theme.mood, lang, ''),
+      bestFor: themeText(theme.bestFor, lang, ''),
       dark: theme.dark,
       palette: { ...theme.palette },
       fonts: { ...theme.fonts },
     }
   })
+  const imported = (Array.isArray(templates) ? templates : [])
+    .filter((template) => template && typeof template === 'object' && typeof template.id === 'string' && template.id !== '')
+    .map((template) => ({
+      id: template.id,
+      name: themeText(template.name, lang, template.id),
+      mood: themeText(template.mood, lang, lang === 'en' ? 'Imported visual template' : '导入的视觉模板'),
+      bestFor: themeText(template.bestFor, lang, lang === 'en' ? 'Brand chrome, palette and type scale' : '品牌固定层、配色与字号'),
+      dark: template.dark === true,
+      palette: { ...(template.palette ?? {}) },
+      fonts: { ...(template.fonts ?? {}) },
+      custom: true,
+    }))
+  return [...builtin, ...imported]
 }
 
 // ---------------------------------------------------------------------------
@@ -1006,6 +1054,78 @@ export function buildDeck(options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// 模板品牌固定层（chrome）
+// ---------------------------------------------------------------------------
+
+export const CHROME_SLOTS = ['cover', 'section', 'content', 'closing']
+
+/** 页型 → chrome 槽位：cover / section / closing 各自独立，其余（含图表、图文）走 content。 */
+export function chromePageType(layout) {
+  return layout === 'cover' || layout === 'section' || layout === 'closing' ? layout : 'content'
+}
+
+function chromeItems(theme, layout) {
+  const list = theme?.chrome?.[chromePageType(layout)]
+  return Array.isArray(list) ? list : []
+}
+
+function hasChromeLayer(theme) {
+  return CHROME_SLOTS.some((slot) => Array.isArray(theme?.chrome?.[slot]) && theme.chrome[slot].length > 0)
+}
+
+function chromeBoxStyle(box) {
+  const percent = chromeBoxToPercent(box)
+  return 'left:' + percent.left + ';top:' + percent.top + ';width:' + percent.width + ';height:' + percent.height
+}
+
+/** 单个 chrome item → HTML；素材缺失或字段非法时静默跳过，不让导出因装饰层失败。 */
+function chromeItemHtml(item, theme) {
+  if (!item || typeof item !== 'object') return ''
+  const style = chromeBoxStyle(item.box)
+  if (item.kind === 'image') {
+    const src = theme.chromeAssets?.[item.asset]
+    if (typeof src !== 'string' || src === '') return ''
+    return '<img class="chrome-item" src="' + escapeHtml(src) + '" alt="" style="' + style + '">'
+  }
+  if (item.kind !== 'text') return ''
+  const text = String(item.text ?? '')
+  if (text === '') return ''
+  const size = clampInt(item.size, 14, 8, 96)
+  const color = /^#[0-9a-f]{6}$/i.test(String(item.color ?? '')) ? String(item.color).toUpperCase() : theme.palette.accent
+  const align = ['left', 'center', 'right'].includes(item.align) ? item.align : 'left'
+  return '<div class="chrome-item chrome-text" style="' + style +
+    ';font-size:calc(' + size + ' * .104167cqw);color:' + color + ';text-align:' + align + ';font-family:var(--font-accent)">' +
+    escapeHtml(text) + '</div>'
+}
+
+function chromeLayerHtml(theme, layout) {
+  const items = chromeItems(theme, layout).map((item) => chromeItemHtml(item, theme)).filter((html) => html !== '')
+  return items.length ? '<div class="chrome" aria-hidden="true">' + items.join('') + '</div>' : ''
+}
+
+/**
+ * chrome 容器与 PPTX 画布取同一个 16:9 居中盒（尺寸与 .media-canvas 一致）：
+ * 16:9 放映时等于全屏，非 16:9 窗口下与图文/图表页内容严格对齐；总览缩略图里
+ * .slide 固定 1280×720，chrome 直接铺满该盒。
+ * 字号沿用 deck-visual 的 1pt = .104167cqw 换算（画布宽 13.3333in = 960pt），
+ * cqw 基准就是这个 16:9 盒，所以坐标与字号一起缩放。
+ */
+const CHROME_CSS = `
+.chrome{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.7778vh);height:min(100vh,56.25vw);pointer-events:none;z-index:3;container-type:inline-size}
+.chrome-item{position:absolute;object-fit:contain}
+.chrome-text{display:flex;align-items:center;white-space:pre-wrap;line-height:1.15;overflow-wrap:anywhere}
+body.overview .chrome{left:0;top:0;transform:none;width:100%;height:100%}
+`
+
+/** chrome 用到的 CSS（含 accent 字体变量）；无 chrome 时返回空串，保证默认输出逐字节不变。 */
+function chromeLayerCss(theme) {
+  if (!hasChromeLayer(theme)) return ''
+  // 只去掉会截断 CSS 声明的字符，保留字体名里的引号（模板 font 可能是 "STKaiti" 这类带空格的名称）。
+  const accent = String(theme.fonts?.accent ?? theme.fonts?.heading ?? '').replace(/[;{}\r\n]/g, '').trim() || 'inherit'
+  return '\n:root{--font-accent:' + accent + '}\n' + CHROME_CSS
+}
+
+// ---------------------------------------------------------------------------
 // HTML 网页放映
 // ---------------------------------------------------------------------------
 
@@ -1075,7 +1195,7 @@ body{
 .slide.is-active{display:flex}
 ${motionCss}
 ${MEDIA_CSS}
-${VISUAL_CSS}
+${VISUAL_CSS}${chromeLayerCss(t)}
 .kicker{
   color:var(--accent);font-weight:700;letter-spacing:.18em;text-transform:uppercase;
   font-size:clamp(12px,1.3vw,18px);margin-bottom:22px;
@@ -1743,7 +1863,8 @@ function renderHtmlSlide(slide, index, ui, langId, manifest = {}, theme) {
   return '<section class="slide slide--' + escapeHtml(slide.layout || 'bullets') + '" data-index="' + number + '"' + notesAttr + (visualStyle ? ' style="' + escapeHtml(visualStyle) + '"' : '') + '>' +
     '<div class="slide-inner">' + inner + '</div>' +
     (manifest.brand?.logoAssetId ? '<img class="brand-logo" src="' + escapeHtml(manifest.assets?.[manifest.brand.logoAssetId]?.data ?? '') + '" alt="' + escapeHtml(manifest.brand.name || 'Logo') + '"/>' : '') +
-    (manifest.brand?.footer ? '<div class="brand-footer">' + escapeHtml(manifest.brand.footer) + '</div>' : '') + '</section>'
+    (manifest.brand?.footer ? '<div class="brand-footer">' + escapeHtml(manifest.brand.footer) + '</div>' : '') +
+    chromeLayerHtml(theme, slide.layout) + '</section>'
 }
 
 function hexToRgba(hex, alpha) {

@@ -13,6 +13,7 @@
 ## 功能
 
 - 生成图文、表格、原生图表和品牌化演示文稿。
+- 可导入自己的模板：从现成 .pptx 自动抽取配色、字体与校徽/班徽等固定标志（白底自动抠透明），或在设置页手动创建并拖拽摆位；之后生成的 HTML 与 PPTX 都套用同一套模板。见[导入模板](docs/TEMPLATE-IMPORT.md)。
 - 可选数字溯源与现场推演：点击数字追到原始材料、CSV 单元格或公式；调整假设、预览影响并确认保存。HTML 保留交互，PPTX 保存静态结果及公式 / 假设，见[数据说明](docs/DATA.md)。
 - 在设置页编辑文字和图片、调整顺序、复制或删除页面，并支持撤销。
 - 提供质量检查与可选的最终 PPTX 图片 / PDF 渲染。
@@ -48,6 +49,7 @@ Office 中的修改不会同步回 JSON。插件检测到成品在外部修改�
 ## 文档
 
 - [使用与排错](docs/USAGE.md)
+- [导入模板](docs/TEMPLATE-IMPORT.md)
 - [更新记录](CHANGELOG.md)
 - [验证范围与历史记录](docs/VALIDATION.md)
 - [问题反馈与功能建议](https://github.com/STARDUSTLC666/dsh-ppt/issues)

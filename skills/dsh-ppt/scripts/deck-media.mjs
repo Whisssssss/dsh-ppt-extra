@@ -4,6 +4,26 @@ export const CANVAS = { w: 13.3333333333, h: 7.5 }
 export const LOGO_BOX = { x: 11.55, y: 0.12, w: 0.95, h: 0.42 }
 export const FOOTER_BOX = { x: 0.85, y: 6.95, w: 9.3, h: 0.3 }
 
+/**
+ * 模板品牌固定层 box（英寸，[x, y, w, h] 或 {x,y,w,h}）→ 百分比字符串。
+ * HTML（deck-core）、PPTX（deck-advanced）与设置页摆位画布共用同一份换算，
+ * 保证三端看到的位置一致。保留最多 2 位小数，整数不带 ".00"。
+ */
+export function chromeBoxToPercent(box, canvas = CANVAS) {
+  const values = Array.isArray(box) ? box : [box?.x, box?.y, box?.w, box?.h]
+  const percent = (value, total) => {
+    const n = Number(value)
+    const ratio = Number.isFinite(n) && Number(total) > 0 ? n / total * 100 : 0
+    return String(Number(ratio.toFixed(2))) + '%'
+  }
+  return {
+    left: percent(values[0], canvas.w),
+    top: percent(values[1], canvas.h),
+    width: percent(values[2], canvas.w),
+    height: percent(values[3], canvas.h),
+  }
+}
+
 export function mediaBoxes(layout) {
   const title = { x: 0.85, y: 0.64, w: 11.6, h: 0.85 }
   const left = { x: 0.85, y: 1.85, w: 5.55, h: 4.65 }
